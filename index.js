@@ -19,12 +19,13 @@ module.exports = function sanitizer_plugin(md, options) {
   var removeUnknown = (typeof options.removeUnknown !== 'undefined') ? options.removeUnknown : false;
   var removeUnbalanced = (typeof options.removeUnbalanced !== 'undefined') ? options.removeUnbalanced : false;
   var imageClass = (typeof options.imageClass !== 'undefined') ? options.imageClass : '';
+  var align = (typeof options.align !== 'undefined') ? options.align : false;
   var runBalancer = false;
   var j;
 
 
   var allowedTags = [ 'a', 'b', 'blockquote', 'code', 'em', 'h1', 'h2', 'h3', 'h4', 'h5',
-                     'h6', 'li', 'ol', 'p', 'pre', 's', 'sub', 'sup', 'strong', 'ul' ];
+                     'h6', 'li', 'ol', 'p', 'pre', 's', 'sub', 'sup', 'strong', 'ul', 'div' ];
   var openTagCount = new Array(allowedTags.length);
   var removeTag = new Array(allowedTags.length);
   for (j = 0; j < allowedTags.length; j++) { openTagCount[j] = 0; }
@@ -106,7 +107,7 @@ module.exports = function sanitizer_plugin(md, options) {
       }
 
       // whitelisted tags
-      match = tag.match(/<(\/?)(b|blockquote|code|em|h[1-6]|li|ol(?: start="\d+")?|p|pre|s|sub|sup|strong|ul)>/i);
+      match = tag.match(/<(\/?)(b|blockquote|code|em|h[1-6]|li|ol(?: start="\d+")?|p|pre|s|sub|sup|strong|ul|div)>/i);
       if (match && !/<\/ol start="\d+"/i.test(tag)) {
         runBalancer = true;
         tagnameIndex = allowedTags.indexOf(match[2].toLowerCase().split(' ')[0]);
@@ -119,6 +120,14 @@ module.exports = function sanitizer_plugin(md, options) {
           removeTag[tagnameIndex] = true;
         }
         return '<' + match[1] + match[2].toLowerCase() + '>';
+      }
+
+      // alignment
+      if (align) {
+        match = tag.match(/<(div|p)(?:\s+[a-z0-9-]+=".*")*(\s+align="[a-zA-Z]*")(?:\s+[a-z0-9-]+=".*")*>/);
+        if (match) {
+          return '<' + match[1] + match[2].toLowerCase() + '>';
+        }
       }
 
       // other tags we don't recognize
@@ -165,12 +174,20 @@ module.exports = function sanitizer_plugin(md, options) {
     if (runBalancer === false) { return; }
     var blkIdx, inlineTokens;
 
+    function resolveHtmlTag(tag) {
+      // Tag is accepted align attribute
+      var isAcceptedAlign = align && !!tag.match(/<(\/?)(p|div)(\s+align="[a-zA-Z]*")?>/);
+      return isAcceptedAlign ? tag : escapeHtml(tag);
+    }
+
     function replaceUnbalancedTag(str, tagname) {
       var openingRegexp, closingRegexp;
       if (tagname === 'a') {
         openingRegexp = RegExp('<a href="[^"<>]*" title="[^"<>]*" target="_blank">', 'g');
       } else if (tagname === 'ol') {
         openingRegexp = /<ol(?: start="\d+")?>/g;
+      } else if (align && tagname.match(/(p|div)/)) { // are accepted align attribute
+        openingRegexp = RegExp('<' + tagname + '(\\s+align="[a-zA-Z]*")?>', 'g');
       } else {
         openingRegexp = RegExp('<' + tagname + '>', 'g');
       }
@@ -179,8 +196,8 @@ module.exports = function sanitizer_plugin(md, options) {
         str = str.replace(openingRegexp, '');
         str = str.replace(closingRegexp, '');
       } else {
-        str = str.replace(openingRegexp, function (m) { return escapeHtml(m); });
-        str = str.replace(closingRegexp, function (m) { return escapeHtml(m); });
+        str = str.replace(openingRegexp, resolveHtmlTag);
+        str = str.replace(closingRegexp, resolveHtmlTag);
       }
       return str;
     }
