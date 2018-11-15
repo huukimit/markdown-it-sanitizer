@@ -25,7 +25,7 @@ module.exports = function sanitizer_plugin(md, options) {
 
 
   var allowedTags = [ 'a', 'b', 'blockquote', 'code', 'em', 'h1', 'h2', 'h3', 'h4', 'h5',
-                     'h6', 'li', 'ol', 'p', 'pre', 's', 'sub', 'sup', 'strong', 'ul', 'div' ];
+                     'h6', 'li', 'ol', 'p', 'pre', 's', 'sub', 'sup', 'strong', 'ul', 'div'];
   var openTagCount = new Array(allowedTags.length);
   var removeTag = new Array(allowedTags.length);
   for (j = 0; j < allowedTags.length; j++) { openTagCount[j] = 0; }
@@ -106,6 +106,38 @@ module.exports = function sanitizer_plugin(md, options) {
         return '<' + match[1].toLowerCase() + '>';
       }
 
+      // alignment
+      if (align) {
+        var isAligningTag = tag.match(/^<(\/?)(div|p)(.*)>/i);
+        if (isAligningTag) {
+          runBalancer = true;
+          tagnameIndex = allowedTags.indexOf(isAligningTag[2].toLowerCase());
+          var isOpenTag = isAligningTag[1] !== '/';
+          if (isOpenTag && openTagCount[tagnameIndex] >= 1) {
+            return escapeHtml(tag);
+          }
+
+          if (!isOpenTag) {
+            openTagCount[tagnameIndex] -= 1;
+          } else {
+            openTagCount[tagnameIndex] += 1;
+          }
+
+          if (!isOpenTag && openTagCount[tagnameIndex] < 0) {
+            openTagCount[tagnameIndex] += 1;
+            return escapeHtml(tag);
+          }
+
+          var hasAlignAttribute = isAligningTag[3].match(/(\s+align="\w+")/i);
+
+          if (hasAlignAttribute) {
+            return '<' + isAligningTag[2].toLowerCase() + hasAlignAttribute[1].toLowerCase() + '>';
+          } else {
+            return '<' + isAligningTag[1] + isAligningTag[2].toLowerCase() + '>';
+          }
+        }
+      }
+
       // whitelisted tags
       match = tag.match(/<(\/?)(b|blockquote|code|em|h[1-6]|li|ol(?: start="\d+")?|p|pre|s|sub|sup|strong|ul|div)>/i);
       if (match && !/<\/ol start="\d+"/i.test(tag)) {
@@ -120,14 +152,6 @@ module.exports = function sanitizer_plugin(md, options) {
           removeTag[tagnameIndex] = true;
         }
         return '<' + match[1] + match[2].toLowerCase() + '>';
-      }
-
-      // alignment
-      if (align) {
-        match = tag.match(/<(div|p)(?:\s+[a-z0-9-]+=".*")*(\s+align="[a-zA-Z]*")(?:\s+[a-z0-9-]+=".*")*>/);
-        if (match) {
-          return '<' + match[1] + match[2].toLowerCase() + '>';
-        }
       }
 
       // other tags we don't recognize
@@ -153,6 +177,7 @@ module.exports = function sanitizer_plugin(md, options) {
       if (state.tokens[blkIdx].type === 'html_block') {
         state.tokens[blkIdx].content = replaceUnknownTags(state.tokens[blkIdx].content);
       }
+
       if (state.tokens[blkIdx].type !== 'inline') {
         continue;
       }
@@ -176,7 +201,7 @@ module.exports = function sanitizer_plugin(md, options) {
 
     function resolveHtmlTag(tag) {
       // Tag is accepted align attribute
-      var isAcceptedAlign = align && !!tag.match(/<(\/?)(p|div)(\s+align="[a-zA-Z]*")?>/);
+      var isAcceptedAlign = align && !!tag.match(/<(\/?)(div|p)(\s+align="\w+")?>/);
       return isAcceptedAlign ? tag : escapeHtml(tag);
     }
 
@@ -187,7 +212,7 @@ module.exports = function sanitizer_plugin(md, options) {
       } else if (tagname === 'ol') {
         openingRegexp = /<ol(?: start="\d+")?>/g;
       } else if (align && tagname.match(/(p|div)/)) { // are accepted align attribute
-        openingRegexp = RegExp('<' + tagname + '(\\s+align="[a-zA-Z]*")?>', 'g');
+        openingRegexp = RegExp('<' + tagname + '(\\s+align="\\w+")?>', 'g');
       } else {
         openingRegexp = RegExp('<' + tagname + '>', 'g');
       }
